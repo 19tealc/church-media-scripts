@@ -1,0 +1,18 @@
+# Local configuration — contains real email addresses
+config.py
+
+# Claude Code local settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Archives / build leftovers
+*.zip
+
+# Caption files pulled down by the CC script
+*.srt

@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Stream Monitor</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --edge:#272e38; --text:#e6edf3;
+    --dim:#8b949e; --accent:#2f81f7; --yt:#ff0033; --fb:#0866ff;
+    --warn:#d29922; --ok:#3fb950; --bar:52px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    overflow:hidden;
+  }
+
+  header{
+    height:var(--bar); display:flex; align-items:center; gap:14px;
+    padding:0 12px; background:var(--panel); border-bottom:1px solid var(--edge);
+    position:relative; z-index:30;
+  }
+  .brand{font-weight:700; letter-spacing:.3px; white-space:nowrap}
+  .brand small{color:var(--dim); font-weight:500; margin-left:8px}
+  .group{display:flex; align-items:center; gap:6px}
+  .group .lbl{color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.6px; margin-right:2px}
+  .spacer{flex:1}
+
+  button{
+    font:inherit; color:var(--text); background:#1f2630; border:1px solid var(--edge);
+    padding:6px 11px; border-radius:7px; cursor:pointer; white-space:nowrap;
+  }
+  button:hover{background:#28313d}
+  button.on{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.on.yt{background:var(--yt); border-color:var(--yt)}
+  button.on.fb{background:var(--fb); border-color:var(--fb)}
+  button.icon{padding:6px 9px}
+
+  #stage{position:relative; height:calc(100% - var(--bar)); display:grid; gap:6px; padding:6px}
+  body.layout-side  #stage{grid-template-columns:1fr 1fr; grid-template-rows:1fr}
+  body.layout-stack #stage{grid-template-columns:1fr; grid-template-rows:1fr 1fr}
+
+  .panel{
+    position:relative; background:#000; border:1px solid var(--edge);
+    border-radius:10px; overflow:hidden; min-width:0; min-height:0;
+  }
+  .panel iframe{width:100%; height:100%; border:0; display:block}
+
+  body.layout-yt #fbPanel, body.layout-fb #ytPanel{
+    position:absolute; right:18px; bottom:18px; width:26%; min-width:240px;
+    aspect-ratio:16/9; height:auto; z-index:10; box-shadow:0 8px 30px rgba(0,0,0,.6);
+  }
+  body.layout-yt #ytPanel, body.layout-fb #fbPanel{position:absolute; inset:6px}
+
+  .tag{
+    position:absolute; top:8px; left:8px; z-index:5;
+    font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase;
+    padding:3px 7px; border-radius:5px; background:rgba(0,0,0,.6);
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); pointer-events:none;
+  }
+  .tag.yt{color:#ff5a75} .tag.fb{color:#6ba5ff}
+  .tag .live{color:var(--ok)}
+
+  .tools{
+    position:absolute; top:6px; right:6px; z-index:6; display:flex; gap:4px;
+    opacity:0; transition:opacity .15s;
+  }
+  .panel:hover .tools{opacity:1}
+  .tools button{background:rgba(20,25,32,.85); padding:4px 8px; font-size:12px}
+
+  .status{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:11px; text-align:center;
+    color:var(--dim); padding:24px; z-index:2;
+  }
+  .status b{color:var(--text); font-size:15px}
+  .status span{max-width:44ch}
+  .status .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+  .status.warn b{color:var(--warn)}
+  .dot{
+    width:9px; height:9px; border-radius:50%; background:var(--dim);
+    animation:pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+
+  #scrim{
+    position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:40;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  #scrim.open{display:flex}
+  .sheet{
+    background:var(--panel); border:1px solid var(--edge); border-radius:14px;
+    width:min(640px,100%); max-height:88vh; overflow:auto; padding:22px;
+  }
+  .sheet h2{font-size:17px; margin-bottom:4px}
+  .sheet p.sub{color:var(--dim); margin-bottom:18px}
+  .field{margin-bottom:18px}
+  .field label{display:block; font-weight:600; margin-bottom:5px}
+  .field .hint{color:var(--dim); font-size:12px; margin-bottom:7px}
+  .field input{
+    width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--edge);
+    background:#0d1117; color:var(--text); font:inherit;
+  }
+  .field input:focus{outline:none; border-color:var(--accent)}
+  .rowbtns{display:flex; gap:8px; justify-content:flex-end; margin-top:22px; align-items:center}
+  .rowbtns .demo{margin-right:auto}
+  .primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+  .primary:hover{background:#4b93f8}
+  details{border-top:1px solid var(--edge); padding-top:14px; margin-top:16px}
+  summary{cursor:pointer; color:var(--dim); font-weight:600}
+  details .body{margin-top:12px; color:var(--dim); font-size:13px}
+  details ul,details ol{margin:8px 0 0 18px}
+  details li{margin-bottom:6px}
+  code{background:#0d1117; padding:1px 5px; border-radius:4px; font-size:12px}
+  .note{
+    background:#12233b; border:1px solid #1f3f6b; color:#a9c9f5;
+    padding:10px 12px; border-radius:8px; font-size:12.5px; margin-bottom:18px;
+  }
+
+  #toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    background:#1f2630; border:1px solid var(--edge); padding:9px 16px;
+    border-radius:8px; z-index:50; opacity:0; transition:opacity .25s;
+    pointer-events:none; max-width:80vw; text-align:center;
+  }
+  #toast.show{opacity:1}
+
+  @media (max-width:820px){
+    body.layout-side #stage{grid-template-columns:1fr; grid-template-rows:1fr 1fr}
+    .brand small{display:none}
+  }
+</style>
+</head>
+<body class="layout-side">
+
+<header>
+  <div class="brand">Live Stream Monitor <small>YouTube + Facebook</small></div>
+
+  <div class="group">
+    <span class="lbl">Layout</span>
+    <button data-layout="side" class="on">Side&nbsp;by&nbsp;side</button>
+    <button data-layout="stack">Stacked</button>
+    <button data-layout="yt">YT&nbsp;big</button>
+    <button data-layout="fb">FB&nbsp;big</button>
+  </div>
+
+  <div class="group">
+    <span class="lbl">Audio</span>
+    <button data-audio="none" class="on">Muted</button>
+    <button data-audio="yt" class="yt">YouTube</button>
+    <button data-audio="fb" class="fb">Facebook</button>
+  </div>
+
+  <div class="spacer"></div>
+  <button id="reloadAll" class="icon" title="Reload both streams (R)">&#8635; Reload</button>
+  <button id="openSettings" class="icon" title="Settings (S)">&#9881; Streams</button>
+</header>
+
+<div id="stage">
+  <div class="panel" id="ytPanel">
+    <span class="tag yt">YouTube <span class="live">&#9679; live</span></span>
+    <div class="tools">
+      <button data-reload="yt" title="Reload">&#8635;</button>
+      <button data-full="yt" title="Fullscreen">&#9974;</button>
+      <button data-pop="yt" title="Open in new window">&#8599;</button>
+    </div>
+  </div>
+
+  <div class="panel" id="fbPanel">
+    <span class="tag fb">Facebook <span class="live">&#9679; live</span></span>
+    <div class="tools">
+      <button data-reload="fb" title="Reload">&#8635;</button>
+      <button data-full="fb" title="Fullscreen">&#9974;</button>
+      <button data-pop="fb" title="Open in new window">&#8599;</button>
+    </div>
+  </div>
+</div>
+
+<div id="scrim">
+  <div class="sheet">
+    <h2>Stream sources</h2>
+    <p class="sub">Saved in this browser, so you only set them once.</p>
+
+    <div class="field">
+      <label for="ytIn">YouTube</label>
+      <div class="hint">Paste this service's <b>live video link</b> &mdash; or a channel link / @handle if you add an API key below.</div>
+      <input id="ytIn" placeholder="https://www.youtube.com/watch?v=... or /live/... or @YourChurch" spellcheck="false">
+    </div>
+
+    <div class="field">
+      <label for="fbIn">Facebook</label>
+      <div class="hint">Paste the link to the live video itself. Facebook has no "show whatever is live" embed, so this changes each service.</div>
+      <input id="fbIn" placeholder="https://www.facebook.com/YourChurch/videos/1234567890" spellcheck="false">
+    </div>
+
+    <details id="autoDetails">
+      <summary>Optional: find the live stream automatically</summary>
+      <div class="body">
+        <p>YouTube retired the old &ldquo;whatever is live on this channel&rdquo; embed, so the only way to
+        auto-find your stream now is a free YouTube Data API key. Add one and you can put a
+        <b>channel link or @handle</b> in the box above &mdash; the page finds the live video on its own,
+        every service, with nothing to paste.</p>
+        <ol>
+          <li>Go to <code>console.cloud.google.com</code> and create a project (free).</li>
+          <li>APIs &amp; Services &rarr; Library &rarr; enable <b>YouTube Data API v3</b>.</li>
+          <li>Credentials &rarr; Create credentials &rarr; API key. Copy it below.</li>
+          <li>Restrict the key to the YouTube Data API. Leave the <i>website</i> restriction off,
+              or the key won't work from a local file.</li>
+        </ol>
+        <div class="field" style="margin:14px 0 0">
+          <label for="keyIn">YouTube Data API key</label>
+          <div class="hint">Stored only in this browser; sent only to Google.</div>
+          <input id="keyIn" placeholder="AIza..." spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Tips &amp; troubleshooting</summary>
+      <div class="body">
+        <ul>
+          <li><b>Everything starts muted.</b> Browsers block autoplay with sound, so pick one source with the Audio buttons once the page loads.</li>
+          <li><b>Switching Facebook audio reloads that player</b> (it jumps to the live edge). YouTube mutes instantly, no reload.</li>
+          <li><b>YouTube says playback is disabled?</b> In YouTube Studio, open the stream and turn on <i>Allow embedding</i>.</li>
+          <li><b>Facebook panel blank?</b> Facebook's embed often refuses to load from a <code>file://</code> page. Serve the folder instead: run <code>python3 -m http.server 8000</code> in this folder, then open <code>http://localhost:8000</code>. Private or unlisted FB videos can't be embedded at all.</li>
+          <li><b>Bookmarkable:</b> add <code>?yt=...&amp;fb=...</code> to the page URL to override the saved values.</li>
+          <li><b>Keys:</b> <code>1</code> YouTube audio &middot; <code>2</code> Facebook audio &middot; <code>0</code> mute both &middot; <code>R</code> reload &middot; <code>S</code> settings &middot; <code>Esc</code> close.</li>
+        </ul>
+      </div>
+    </details>
+
+    <div class="rowbtns">
+      <button id="demoBtn" class="demo">&#9654; Try a demo</button>
+      <button id="cancelBtn">Cancel</button>
+      <button id="saveBtn" class="primary">Save &amp; load</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var KEY = "liveStreamMonitor.v2";
+  var cfg = { yt:"", fb:"", key:"" };
+  var audio = "none";                 // "none" | "yt" | "fb"
+  var resolvedVideo = "";             // live video id found via the API
+  var pollTimer = null;
+
+  var ytPanel = document.getElementById("ytPanel");
+  var fbPanel = document.getElementById("fbPanel");
+  var scrim   = document.getElementById("scrim");
+  var ytIn    = document.getElementById("ytIn");
+  var fbIn    = document.getElementById("fbIn");
+  var keyIn   = document.getElementById("keyIn");
+  var toastEl = document.getElementById("toast");
+
+  /* ---------- storage (file:// can block localStorage, so guard it) ---------- */
+  function load(){
+    try{
+      var raw = localStorage.getItem(KEY);
+      if(raw){ var o = JSON.parse(raw) || {}; cfg.yt = o.yt||""; cfg.fb = o.fb||""; cfg.key = o.key||""; }
+    }catch(e){}
+    var q = new URLSearchParams(location.search);
+    if(q.get("yt"))  cfg.yt  = q.get("yt");
+    if(q.get("fb"))  cfg.fb  = q.get("fb");
+    if(q.get("key")) cfg.key = q.get("key");
+  }
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }
+    catch(e){ toast("Saved for this session only — this browser blocks storage on file:// pages."); }
+  }
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ toastEl.classList.remove("show"); }, 5000);
+  }
+
+  /* ---------- parse whatever was pasted ---------- */
+  // -> {kind:"video"|"channel"|"handle"|"user", id} or null
+  function parseYouTube(raw){
+    var s = (raw||"").trim(), m;
+    if(!s) return null;
+
+    if(/^[\w-]{11}$/.test(s))                 return {kind:"video",   id:s};
+    if(/^UC[\w-]{20,}$/.test(s))              return {kind:"channel", id:s};
+    if(/^@[\w.\-]+$/.test(s))                 return {kind:"handle",  id:s};
+
+    if((m = s.match(/[?&]v=([\w-]{11})/)))                    return {kind:"video",   id:m[1]};
+    if((m = s.match(/youtu\.be\/([\w-]{11})/)))               return {kind:"video",   id:m[1]};
+    if((m = s.match(/\/(?:live|embed|shorts|v)\/([\w-]{11})/))) return {kind:"video", id:m[1]};
+    if((m = s.match(/channel\/(UC[\w-]+)/)))                  return {kind:"channel", id:m[1]};
+    if((m = s.match(/[?&]channel=(UC[\w-]+)/)))               return {kind:"channel", id:m[1]};
+    if((m = s.match(/youtube\.com\/(@[\w.\-]+)/)))            return {kind:"handle",  id:m[1]};
+    if((m = s.match(/youtube\.com\/(?:c|user)\/([\w.\-]+)/))) return {kind:"user",    id:m[1]};
+    return null;
+  }
+
+  function ytEmbedSrc(videoId){
+    var mute = (audio === "yt") ? 0 : 1;
+    var src = "https://www.youtube.com/embed/" + encodeURIComponent(videoId)
+            + "?autoplay=1&mute=" + mute + "&playsinline=1&rel=0&enablejsapi=1";
+    // origin is required by the JS API on http(s); on file:// it is the string "null"
+    if(location.origin && location.origin !== "null"){
+      src += "&origin=" + encodeURIComponent(location.origin);
+    }
+    return src;
+  }
+
+  function fbSrc(){
+    var s = (cfg.fb||"").trim();
+    if(!s) return "";
+    if(!/^https?:\/\//i.test(s)) s = "https://" + s.replace(/^\/+/, "");
+    var mute = (audio === "fb") ? "false" : "true";
+    return "https://www.facebook.com/plugins/video.php"
+         + "?href=" + encodeURIComponent(s)
+         + "&show_text=false&autoplay=true&muted=" + mute + "&width=1280&height=720";
+  }
+
+  function ytWatchUrl(){
+    if(resolvedVideo) return "https://www.youtube.com/watch?v=" + resolvedVideo;
+    var p = parseYouTube(cfg.yt);
+    if(!p) return "";
+    if(p.kind === "video")   return "https://www.youtube.com/watch?v=" + p.id;
+    if(p.kind === "channel") return "https://www.youtube.com/channel/" + p.id + "/live";
+    if(p.kind === "handle")  return "https://www.youtube.com/" + p.id + "/live";
+    return "https://www.youtube.com/c/" + p.id + "/live";
+  }
+
+  /* ---------- panel rendering ---------- */
+  function clearPanel(panel){
+    var f = panel.querySelector("iframe"); if(f) f.remove();
+    var s = panel.querySelector(".status"); if(s) s.remove();
+  }
+
+  function mount(panel, src){
+    clearPanel(panel);
+    var f = document.createElement("iframe");
+    f.src = src;
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write";
+    f.setAttribute("allowfullscreen", "");
+    f.setAttribute("frameborder", "0");
+    f.setAttribute("scrolling", "no");
+    panel.appendChild(f);
+  }
+
+  // buttons: [{label, onClick}]
+  function showStatus(panel, opts){
+    clearPanel(panel);
+    var box = document.createElement("div");
+    box.className = "status" + (opts.warn ? " warn" : "");
+
+    if(opts.spinner){
+      var d = document.createElement("div"); d.className = "dot"; box.appendChild(d);
+    }
+    var t = document.createElement("b"); t.textContent = opts.title; box.appendChild(t);
+    if(opts.detail){
+      var s = document.createElement("span"); s.textContent = opts.detail; box.appendChild(s);
+    }
+    if(opts.buttons && opts.buttons.length){
+      var row = document.createElement("div"); row.className = "row";
+      opts.buttons.forEach(function(b){
+        var el = document.createElement("button");
+        el.textContent = b.label; el.onclick = b.onClick;
+        row.appendChild(el);
+      });
+      box.appendChild(row);
+    }
+    panel.appendChild(box);
+  }
+
+  /* ---------- YouTube Data API lookup ---------- */
+  function api(path, params){
+    var u = new URL("https://www.googleapis.com/youtube/v3/" + path);
+    Object.keys(params).forEach(function(k){ u.searchParams.set(k, params[k]); });
+    u.searchParams.set("key", cfg.key);
+    return fetch(u.toString()).then(function(r){
+      return r.json().then(function(j){
+        if(!r.ok){
+          var msg = (j && j.error && j.error.message) || ("HTTP " + r.status);
+          throw new Error(msg);
+        }
+        return j;
+      });
+    });
+  }
+
+  function resolveChannelId(p){
+    if(p.kind === "channel") return Promise.resolve(p.id);
+    if(p.kind === "handle")  return api("channels", {part:"id", forHandle:p.id}).then(pickId);
+    return api("channels", {part:"id", forUsername:p.id}).then(pickId);
+
+    function pickId(j){
+      if(j.items && j.items.length) return j.items[0].id;
+      throw new Error("No channel found for " + p.id);
+    }
+  }
+
+  function findLiveVideo(channelId){
+    return api("search", {
+      part:"snippet", channelId:channelId, eventType:"live", type:"video", maxResults:"1"
+    }).then(function(j){
+      return (j.items && j.items.length) ? j.items[0].id.videoId : null;
+    });
+  }
+
+  function stopPolling(){ if(pollTimer){ clearTimeout(pollTimer); pollTimer = null; } }
+  function pollLater(){ stopPolling(); pollTimer = setTimeout(renderYT, 5*60*1000); }
+
+  /* ---------- YouTube panel ---------- */
+  function renderYT(){
+    stopPolling();
+    var p = parseYouTube(cfg.yt);
+
+    if(!p){
+      resolvedVideo = "";
+      if((cfg.yt||"").trim()){
+        showStatus(ytPanel, {
+          warn:true,
+          title:"Couldn't read that YouTube link",
+          detail:"Paste the live video link (youtube.com/watch?v=..., /live/..., or youtu.be/...).",
+          buttons:[{label:"⚙ Fix it", onClick:openSettings}]
+        });
+      }else{
+        showStatus(ytPanel, {
+          title:"No YouTube stream set",
+          detail:"Add this service's live video link to get started.",
+          buttons:[{label:"⚙ Set streams", onClick:openSettings}]
+        });
+      }
+      return;
+    }
+
+    if(p.kind === "video"){ resolvedVideo = p.id; mount(ytPanel, ytEmbedSrc(p.id)); return; }
+
+    // channel / handle / user -> needs the API key
+    if(!cfg.key){
+      resolvedVideo = "";
+      showStatus(ytPanel, {
+        warn:true,
+        title:"Channel links need an API key",
+        detail:"YouTube retired the old auto-embed for channels. Paste this service's live video link instead, or add a free API key in Settings.",
+        buttons:[
+          {label:"⚙ Settings", onClick:function(){ openSettings(true); }},
+          {label:"↗ Open channel", onClick:function(){ window.open(ytWatchUrl(), "_blank", "noopener"); }}
+        ]
+      });
+      return;
+    }
+
+    showStatus(ytPanel, { spinner:true, title:"Looking for the live stream…" });
+
+    resolveChannelId(p)
+      .then(findLiveVideo)
+      .then(function(vid){
+        if(vid){ resolvedVideo = vid; mount(ytPanel, ytEmbedSrc(vid)); return; }
+        resolvedVideo = "";
+        showStatus(ytPanel, {
+          title:"Nothing live on this channel right now",
+          detail:"Checking again every 5 minutes.",
+          buttons:[{label:"↻ Check now", onClick:renderYT}]
+        });
+        pollLater();
+      })
+      .catch(function(err){
+        resolvedVideo = "";
+        var m = String(err && err.message || err);
+        var friendly = /quota/i.test(m)
+              ? "Daily API quota used up. Paste the live video link directly for now."
+          : /referer|referrer|blocked|restrict/i.test(m)
+              ? "The API key is website-restricted. Remove that restriction so it works from this page."
+          : /API key not valid|keyInvalid|API_KEY/i.test(m)
+              ? "That API key isn't valid — check it in Settings."
+          : m;
+        showStatus(ytPanel, {
+          warn:true, title:"Couldn't reach YouTube", detail:friendly,
+          buttons:[
+            {label:"↻ Retry", onClick:renderYT},
+            {label:"⚙ Settings", onClick:function(){ openSettings(true); }}
+          ]
+        });
+      });
+  }
+
+  /* ---------- Facebook panel ---------- */
+  function renderFB(){
+    var src = fbSrc();
+    if(!src){
+      showStatus(fbPanel, {
+        title:"No Facebook stream set",
+        detail:"Paste this week's live video link.",
+        buttons:[{label:"⚙ Set streams", onClick:openSettings}]
+      });
+      return;
+    }
+    mount(fbPanel, src);
+  }
+
+  function renderAll(){ renderYT(); renderFB(); }
+
+  /* ---------- audio ---------- */
+  // YouTube responds to postMessage (no reload). Facebook's plugin offers no such
+  // control without the full JS SDK, so it gets a fresh iframe with muted flipped.
+  function ytCommand(fn){
+    var f = ytPanel.querySelector("iframe");
+    if(!f || !f.contentWindow) return;
+    try{
+      f.contentWindow.postMessage(JSON.stringify({event:"command", func:fn, args:[]}), "*");
+    }catch(e){}
+  }
+
+  function setAudio(which){
+    var prev = audio;
+    audio = which;
+    document.querySelectorAll("[data-audio]").forEach(function(b){
+      b.classList.toggle("on", b.dataset.audio === which);
+    });
+
+    if(which === "yt"){ ytCommand("unMute"); ytCommand("playVideo"); }
+    else               ytCommand("mute");
+
+    if((prev === "fb") !== (which === "fb")) renderFB();
+  }
+
+  function setLayout(name){
+    document.body.className = "layout-" + name;
+    document.querySelectorAll("[data-layout]").forEach(function(b){
+      b.classList.toggle("on", b.dataset.layout === name);
+    });
+  }
+
+  /* ---------- settings ---------- */
+  function openSettings(openAuto){
+    ytIn.value  = cfg.yt;
+    fbIn.value  = cfg.fb;
+    keyIn.value = cfg.key;
+    if(openAuto || cfg.key) document.getElementById("autoDetails").open = true;
+    scrim.classList.add("open");
+    ytIn.focus();
+  }
+  function closeSettings(){ scrim.classList.remove("open"); }
+
+  document.getElementById("openSettings").onclick = function(){ openSettings(); };
+  document.getElementById("cancelBtn").onclick    = closeSettings;
+  scrim.onclick = function(e){ if(e.target === scrim) closeSettings(); };
+
+  // Public streams used only by the "Try a demo" button. Live video IDs rotate,
+  // so these can go stale — the panel will say so if they do.
+  var DEMO = {
+    yt: "https://www.youtube.com/watch?v=gCNeDWCI0vo",
+    fb: "https://www.facebook.com/facebook/videos/10153231379946729"
+  };
+
+  document.getElementById("demoBtn").onclick = function(){
+    ytIn.value = DEMO.yt;
+    fbIn.value = DEMO.fb;
+    keyIn.value = "";
+    toast("Demo streams loaded — press Save & load to watch them.");
+  };
+
+  document.getElementById("saveBtn").onclick = function(){
+    cfg.yt  = ytIn.value.trim();
+    cfg.fb  = fbIn.value.trim();
+    cfg.key = keyIn.value.trim();
+    save();
+    closeSettings();
+    renderAll();
+  };
+
+  /* ---------- controls ---------- */
+  document.querySelectorAll("[data-layout]").forEach(function(b){
+    b.onclick = function(){ setLayout(b.dataset.layout); };
+  });
+  document.querySelectorAll("[data-audio]").forEach(function(b){
+    b.onclick = function(){ setAudio(b.dataset.audio); };
+  });
+  document.getElementById("reloadAll").onclick = renderAll;
+
+  document.querySelectorAll("[data-reload]").forEach(function(b){
+    b.onclick = function(){ b.dataset.reload === "yt" ? renderYT() : renderFB(); };
+  });
+  document.querySelectorAll("[data-full]").forEach(function(b){
+    b.onclick = function(){
+      var p = b.dataset.full === "yt" ? ytPanel : fbPanel;
+      if(document.fullscreenElement) document.exitFullscreen();
+      else if(p.requestFullscreen) p.requestFullscreen();
+    };
+  });
+  document.querySelectorAll("[data-pop]").forEach(function(b){
+    b.onclick = function(){
+      var url = b.dataset.pop === "yt" ? ytWatchUrl() : cfg.fb;
+      if(url) window.open(url, "_blank", "noopener");
+    };
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(e.target.tagName === "INPUT"){
+      if(e.key === "Escape") closeSettings();
+      if(e.key === "Enter")  document.getElementById("saveBtn").click();
+      return;
+    }
+    var k = e.key.toLowerCase();
+    if(k === "1") setAudio("yt");
+    else if(k === "2") setAudio("fb");
+    else if(k === "0") setAudio("none");
+    else if(k === "r") renderAll();
+    else if(k === "s") openSettings();
+    else if(k === "escape") closeSettings();
+  });
+
+  /* ---------- go ---------- */
+  load();
+  renderAll();
+  if(!cfg.yt && !cfg.fb) openSettings();
+  else toast("Both players start muted — press 1 for YouTube audio, 2 for Facebook.");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+========================================================
+  CHURCH MEDIA SCRIPTS - SETUP INSTRUCTIONS
+========================================================
+Files in this folder:
+  - reaper_automation.py        (Reaper logic)
+  - Start Reaper Automation.command  (Stream Deck launcher)
+  - email_cc_file.py            (CC email logic)
+  - Email CC File.command       (Stream Deck launcher)
+========================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ONE-TIME SETUP (do this before using either button)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. GRANT TERMINAL ACCESSIBILITY ACCESS
+   System Settings → Privacy & Security → Accessibility
+   Click the "+" button and add Terminal.app
+
+2. GRANT TERMINAL AUTOMATION ACCESS
+   System Settings → Privacy & Security → Automation → Terminal
+   Check the box next to each of these:
+     ✓ REAPER
+     ✓ Safari
+     ✓ Mail
+     ✓ Finder
+
+3. ENABLE SAFARI JAVASCRIPT (required for CC File button only)
+   If you don't see the Develop menu in Safari:
+     Safari → Settings → Advanced → check "Show features for web developers"
+   Then:
+     Safari → Develop → Allow JavaScript from Apple Events
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BUTTON 1 — START REAPER AUTOMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILE TO POINT STREAM DECK TO:
+  Start Reaper Automation.command
+
+STREAM DECK SETUP:
+  1. Open the Stream Deck app
+  2. Drag an "Open" action onto a button (under the System category)
+  3. Click the folder icon and select:
+     Downloads → Colby Temp → Church Media Scripts
+       → Start Reaper Automation.command
+
+WHAT IT DOES BY DAY:
+  Sunday before 12:00 PM
+    - Waits until 10:00 AM, then opens Reaper with the Sunday template
+    - Saves the project as "Sunday Service May. 07 2026.RPP"
+    - Starts recording automatically at 10:19:45 AM
+    - Stops recording automatically at 11:40:00 AM
+
+  Sunday after 12:00 PM / Saturday
+    - Prompts for a show name
+    - Prompts for record start and stop times (or press Enter to skip
+      and control recording manually)
+    - Opens Reaper immediately and saves with the entered name
+
+  Wednesday
+    - Same automated behavior as Sunday morning
+    - Update the times inside reaper_automation.py to match your schedule
+
+  All other days
+    - Displays "No service scheduled" and exits
+
+EDITING THE SCHEDULE:
+  Open reaper_automation.py in a text editor and find the SERVICES section
+  near the top. Update times or add new days there.
+
+  If a file already exists with today's name (e.g. you ran it twice),
+  it automatically saves as "Sunday Service May. 07 2026 Take 2.RPP"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BUTTON 2 — EMAIL CC FILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILE TO POINT STREAM DECK TO:
+  Email CC File.command
+
+STREAM DECK SETUP:
+  1. Open the Stream Deck app
+  2. Drag an "Open" action onto a button (under the System category)
+  3. Click the folder icon and select:
+     Downloads → Colby Temp → Church Media Scripts
+       → Email CC File.command
+
+WHAT IT DOES:
+  1. Deletes any leftover .srt files from a previous run
+  2. Opens Safari and logs in to EEG Cloud automatically
+  3. Navigates to LEXI Live → Job List → top job
+  4. Downloads the SRT caption file
+  5. Logs out of EEG Cloud
+  6. Opens Mail with:
+       To:  the "to" address from config.py
+       CC:  the "cc" addresses from config.py
+       Subject: CC File 05/07/2026
+       Body: a short friendly message (rotates randomly)
+       Attachment: the downloaded .srt file
+  7. Deletes the local copy of the .srt file
+  → Review the email in Mail and click Send when ready
+
+UPDATING RECIPIENTS OR THE LOGIN:
+  Open email_cc_file.py in a text editor.
+  The RECIPIENTS and EMAIL sections are near the top of the file.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"Operation not allowed" or permission error
+  → Re-check the Accessibility and Automation steps above.
+  → Make sure you added Terminal.app, not just python3.
+
+Script opens Terminal but nothing happens
+  → Right-click the .command file → Open (first time only,
+    macOS may block it as an unverified file).
+  → After clicking Open once, the Stream Deck button will work normally.
+
+EEG Cloud navigation fails or SRT doesn't download
+  → Confirm "Allow JavaScript from Apple Events" is enabled in Safari.
+  → The site layout may have changed — the delays in the script
+    (15s, 10s waits) may need to be increased if the site is slow.
+
+Reaper opens but Save As dialog doesn't appear
+  → Try increasing REAPER_LOAD_DELAY in reaper_automation.py from 5 to 8.
+
+========================================================
