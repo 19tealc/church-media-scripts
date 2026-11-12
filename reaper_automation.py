@@ -70,10 +70,14 @@ SERVICES = {
         "name":         "Sunday Service",
         "template":     DEFAULT_TEMPLATE,
         "open_time":    datetime.time( 8, 45,  0),   # 8:45 AM
-        "record_start": datetime.time(10, 19, 45),   # 10:19:45 AM
-        "record_stop":  datetime.time(11, 40,  0),   # 11:40 AM
-        "layout_time":  datetime.time(10, 21, 20),   # 10:21:20 AM (record start + 95s,
-                                                     # so the 90s-delayed stream is visible)
+        "record_start": datetime.time(10, 19, 58),   # 10:19:58 AM
+        # The DiGiCo board stops the recording: a macro on the last snapshot
+        # of the service fires stop_recording_safe.lua over OSC. So there is
+        # no record_stop time — the script waits for the board instead.
+        "record_stop":  None,
+        "board_stop":   True,
+        "layout_time":  datetime.time(10, 21, 33),   # record start + 95s, so the
+                                                     # 90s-delayed stream is visible
     },
     "Wednesday": {
         "name":         "Wednesday Night",
@@ -202,12 +206,17 @@ def build_filename(prefix: str) -> str:
     date_str = datetime.datetime.now().strftime(DATE_FORMAT)
     base = f"{prefix} {date_str}"
 
-    if not os.path.exists(os.path.join(SAVE_FOLDER, base + ".RPP")):
+    def taken(name):
+        # Each project lives in its own folder; also check the old loose layout
+        return (os.path.exists(os.path.join(SAVE_FOLDER, name))
+                or os.path.exists(os.path.join(SAVE_FOLDER, name + ".RPP")))
+
+    if not taken(base):
         return base
 
     for take in range(2, 20):
         candidate = f"{base} Take {take}"
-        if not os.path.exists(os.path.join(SAVE_FOLDER, candidate + ".RPP")):
+        if not taken(candidate):
             log(f"  File already exists — using: {candidate}")
             return candidate
 
@@ -340,8 +349,15 @@ def launch_reaper(template: str):
 
 def save_project(prefix: str):
     filename = build_filename(prefix)
-    folder   = SAVE_FOLDER.rstrip("/") + "/"
-    log(f"Saving project as: {filename}.RPP")
+    # Save into a dated folder of its own. The templates leave the record path
+    # blank, so Reaper records into the project's folder — this keeps each
+    # service's mic recordings together instead of loose in REAPER Media.
+    # (Leave Reaper's "Create subdirectory for project" box UNticked, or the
+    # project ends up one folder deeper.)
+    project_dir = os.path.join(SAVE_FOLDER, filename)
+    os.makedirs(project_dir, exist_ok=True)
+    folder   = project_dir.rstrip("/") + "/"
+    log(f"Saving project as: {filename}/{filename}.RPP")
 
     script = f'''
 tell application "REAPER" to activate
@@ -363,7 +379,7 @@ tell application "System Events"
 end tell
 '''
     applescript(script)
-    log(f"  Saved: {filename}.RPP")
+    log(f"  Saved: {filename}/{filename}.RPP")
 
 
 def usable_screen():
@@ -440,6 +456,46 @@ def ensure_monitor_server():
 
     log("  ⚠  Stream monitor server did not start — opening it anyway.")
     return False
+
+
+def close_stream_windows():
+    """Close only the Safari windows this script opened, and stop the server.
+
+    Matched by URL so the operator's own Safari windows are left alone.
+    Collected first, then closed — closing while iterating skips windows.
+    """
+    log("Closing stream check windows...")
+
+    script = f'''
+tell application "Safari"
+    set doomed to {{}}
+    repeat with w in windows
+        try
+            set u to URL of current tab of w
+            if u contains "studio.resi.io" or u contains "localhost:{MONITOR_PORT}" then
+                set end of doomed to w
+            end if
+        end try
+    end repeat
+    set n to count of doomed
+    repeat with w in doomed
+        try
+            close w
+        end try
+    end repeat
+    return n
+end tell
+'''
+    result = applescript(script)
+    closed = result.stdout.strip() or "0"
+    log(f"  Closed {closed} stream window(s).")
+
+    # Stop the local server this script started for the monitor page.
+    subprocess.run(
+        ["pkill", "-f", f"http.server {MONITOR_PORT}"],
+        capture_output=True,
+    )
+    log(f"  Stream monitor server on port {MONITOR_PORT} stopped.")
 
 
 def setup_screen_layout():
@@ -556,6 +612,93 @@ end tell
     log("  Reaper is ready to close manually.")
 
 
+def wait_for_board_record_stop(quiet_seconds=30) -> bool:
+    """Block until recording stops (media files stop growing for a while)."""
+    if TEST_MODE:
+        quiet_seconds = 15
+        log("  [TEST] Watching for the recording to stop (15s of quiet).")
+
+    log("Recording — waiting for the board to stop it...")
+    log("  (last snapshot of the service)")
+
+    needed = max(1, quiet_seconds // 5)
+    last = recent_media_bytes()
+    unchanged = 0
+
+    while True:
+        time.sleep(5)
+        current = recent_media_bytes()
+        if current > last:
+            unchanged = 0
+        else:
+            unchanged += 1
+            if unchanged >= needed:
+                log("  ✓ Recording stopped.")
+                return True
+        last = current
+
+
+def save_and_quit_reaper():
+    """Save the project and close Reaper cleanly."""
+    log("Saving project and closing Reaper...")
+
+    # The stop script already saved recorded media and the project, but a
+    # second Cmd+S is harmless and covers a manual stop.
+    applescript('''
+tell application "REAPER" to activate
+delay 0.5
+tell application "System Events"
+    tell process "REAPER"
+        keystroke "s" using {command down}
+    end tell
+end tell
+''')
+    time.sleep(2)
+
+    applescript('tell application "REAPER" to quit')
+    time.sleep(2)
+
+    # If Reaper asks about unsaved changes, accept it.
+    #
+    # System Events sends keystrokes to whatever app is FRONTMOST — a
+    # "tell process" block does not redirect them. So only act if Reaper is
+    # still running, bring it to the front first, and prefer clicking the
+    # button by name over a blind Return that could land in Safari.
+    applescript('''
+tell application "System Events"
+    if exists (process "REAPER") then
+        tell process "REAPER"
+            set frontmost to true
+            delay 0.4
+            if (count of windows) > 0 then
+                try
+                    click button "Save" of window 1
+                on error
+                    try
+                        click button "Save All" of window 1
+                    on error
+                        try
+                            keystroke return
+                        end try
+                    end try
+                end try
+            end if
+        end tell
+    end if
+end tell
+''')
+
+    for _ in range(15):
+        time.sleep(1)
+        if subprocess.run(["pgrep", "-x", "REAPER"],
+                          capture_output=True).returncode != 0:
+            log("  ✓ Reaper closed.")
+            return True
+
+    log("  ⚠ Reaper is still open — close it manually.")
+    return False
+
+
 def warn_keep_terminal_open():
     print()
     print("  ┌───────────────────────────────────────────────────┐")
@@ -571,7 +714,9 @@ def run_service(service: dict):
     log(f"Service : {service['name']}")
     if service["open_time"]:
         log(f"Open    : {service['open_time'].strftime('%I:%M:%S %p')}")
-    if service["record_start"]:
+    if service["record_start"] and service.get("board_stop"):
+        log(f"Record  : {service['record_start'].strftime('%I:%M:%S %p')} → stopped by the board")
+    elif service["record_start"]:
         log(f"Record  : {service['record_start'].strftime('%I:%M:%S %p')} → {service['record_stop'].strftime('%I:%M:%S %p')}")
     else:
         log("Record  : manual control")
@@ -606,8 +751,18 @@ def run_service(service: dict):
             wait_until(service["layout_time"], "Screen layout")
             setup_screen_layout()
 
-        wait_until(service["record_stop"], "Recording stops")
-        stop_recording()
+        if service.get("board_stop"):
+            # The board fires stop_recording_safe.lua on the last snapshot,
+            # which stops, saves the media and saves the project. This script
+            # just watches for it, then closes out.
+            wait_for_board_record_stop()
+            close_stream_windows()
+            save_and_quit_reaper()
+        else:
+            wait_until(service["record_stop"], "Recording stops")
+            stop_recording()
+            close_stream_windows()
+
     else:
         log("Reaper is ready — control recording manually.")
         log("  Remember to click Record in MarkerMatic too.")
@@ -639,6 +794,23 @@ def main():
     if TEST_MODE:
         log("*** TEST MODE — waits skipped ***")
     log(f"Today is {today}, {now.strftime('%I:%M %p')}")
+
+    # --day <Name> forces a scheduled service on any date (handy for testing),
+    # e.g.  --day Sunday  to rehearse the Sunday run on a weekday.
+    if "--day" in sys.argv:
+        try:
+            wanted = sys.argv[sys.argv.index("--day") + 1].capitalize()
+        except IndexError:
+            raise SystemExit("--day needs a day name, e.g. --day Sunday")
+        service = SERVICES.get(wanted)
+        if not service:
+            raise SystemExit(
+                f"No service defined for {wanted}. "
+                f"Known: {', '.join(SERVICES)}"
+            )
+        log(f"Forcing the {wanted} schedule.")
+        run_service(service)
+        return
 
     # --special forces the special-show setup on any day (handy for testing)
     if "--special" in sys.argv:
