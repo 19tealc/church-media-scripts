@@ -6,6 +6,10 @@ Files in this folder:
   - Start Reaper Automation.command  (Stream Deck launcher)
   - email_cc_file.py            (CC email logic)
   - Email CC File.command       (Stream Deck launcher)
+  - Test Mode.command / Rehearse Sunday.command /
+    Rehearse Special Show.command (Stream Deck rehearsal launchers)
+  - Open Recordings Folder.command (Stream Deck launcher)
+  - Stop and Save Recording.command + stop_and_save.py (Stream Deck launcher)
 ========================================================
 
 
@@ -106,6 +110,74 @@ WHAT IT DOES:
 UPDATING RECIPIENTS OR THE LOGIN:
   Open email_cc_file.py in a text editor.
   The RECIPIENTS and EMAIL sections are near the top of the file.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  REHEARSAL BUTTONS — TEST MODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use these to dry-run the Reaper automation before a service.
+In test mode every wait is cut to about 10 seconds and the
+project is saved with a "TEST" prefix (e.g. "TEST Sunday
+Service Nov. 11 2026.RPP"), so real recordings are never
+overwritten. Reaper and MarkerMatic DO really record — delete
+the TEST files from ~/Documents/REAPER Media afterwards.
+
+Set each one up like Button 1 (System → "Open" action), pointing at:
+
+  Test Mode.command
+    - Runs today's normal logic, fast-forwarded.
+    - On a day with no service (Mon/Tue/Thu/Fri) it just says
+      "No service scheduled" — use Rehearse Sunday instead.
+
+  Rehearse Sunday.command
+    - Runs the full Sunday Service schedule on any day.
+    - Sunday's recording is stopped by the DiGiCo board, so in
+      test mode it waits for 15s of quiet after you stop recording
+      (press stop in Reaper or fire the board macro).
+
+  Rehearse Special Show.command
+    - Runs the Saturday / Sunday-afternoon prompts (show name,
+      template, record times) on any day.
+
+The Terminal window stays open when a rehearsal ends so you can
+read the log. Press Return to close it.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  OPEN RECORDINGS FOLDER BUTTON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILE TO POINT STREAM DECK TO:
+  Open Recordings Folder.command
+
+Opens Documents → REAPER Media in Finder. Each service is saved
+in its own dated folder there (e.g. "Sunday Service Nov. 15 2026"),
+with the project file and every mic recording inside it.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  STOP AND SAVE RECORDING BUTTON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILE TO POINT STREAM DECK TO:
+  Stop and Save Recording.command
+
+WHAT IT DOES:
+  1. Stops Reaper recording and saves ALL recorded media
+     (no "Save / Delete" prompt to click)
+  2. Saves the project
+  3. Saves the project one more time
+  4. Shows which project was saved, then the window closes
+
+It runs the same stop_recording_safe.lua the DiGiCo board uses, sent
+to Reaper over OSC, so Reaper doesn't need to be the front window.
+Pressing it when Reaper isn't recording is harmless — it just saves.
+
+If the window stays open with a warning, stop Reaper by hand
+(Stop → Save All, then Cmd+S). If stop_recording_safe.lua is ever
+re-added to Reaper its command ID changes — update STOP_SCRIPT_ID
+at the top of stop_and_save.py.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

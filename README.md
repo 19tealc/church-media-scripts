@@ -53,6 +53,11 @@ URLs, which would wipe the saved stream links every service.
 | `Install Restart Schedule.command` | Schedule weekly restarts |
 | `Restart ProPresenter.command` | Restart ProPresenter cleanly |
 | `Speedtest.command` | Quick upload-speed check before going live |
+| `Test Mode.command` | Rehearse today's run with `--test` (waits cut to 10s, `TEST` filenames) |
+| `Rehearse Sunday.command` | Rehearse the Sunday Service schedule on any day |
+| `Rehearse Special Show.command` | Rehearse the special-show prompts on any day |
+| `Open Recordings Folder.command` | Open `~/Documents/REAPER Media` in Finder |
+| `Stop and Save Recording.command` | Stop Reaper recording, keep all recorded media, save the project (runs `stop_and_save.py`) |
 
 The `.command` files are double-clickable and work well as Stream Deck targets.
 
